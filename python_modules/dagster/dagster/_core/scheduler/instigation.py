@@ -64,6 +64,7 @@ class DynamicPartitionsRequestResult(
             ("added_partitions", Optional[Sequence[str]]),
             ("deleted_partitions", Optional[Sequence[str]]),
             ("skipped_partitions", Sequence[str]),
+            ("replaced_partitions", Optional[Sequence[str]]),
         ],
     )
 ):
@@ -73,13 +74,15 @@ class DynamicPartitionsRequestResult(
         added_partitions: Optional[Sequence[str]],
         deleted_partitions: Optional[Sequence[str]],
         skipped_partitions: Sequence[str],
+        replaced_partitions: Optional[Sequence[str]],
     ):
         check.opt_sequence_param(added_partitions, "added_partitions")
         check.opt_sequence_param(deleted_partitions, "deleted_partitions")
+        check.opt_sequence_param(replaced_partitions, "replaced_partitions")
 
         # One of added_partitions or deleted_partitions must be a sequence, and the other must be None
-        if not xor(added_partitions is None, deleted_partitions is None):
-            check.failed("Exactly one of added_partitions and deleted_partitions must be provided")
+        if not xor(added_partitions is None, deleted_partitions is None) or xor(deleted_partitions is None, replaced_partitions is None):
+            check.failed("Exactly one of added_partitions, deleted_partitions and replaced_partitions must be provided")
 
         return super().__new__(
             cls,
@@ -87,6 +90,7 @@ class DynamicPartitionsRequestResult(
             added_partitions,
             deleted_partitions,
             check.sequence_param(skipped_partitions, "skipped_partitions"),
+            replaced_partitions,
         )
 
 

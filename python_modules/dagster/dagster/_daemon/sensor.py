@@ -23,6 +23,7 @@ from dagster._core.definitions.declarative_automation.serialized_objects import 
 from dagster._core.definitions.dynamic_partitions_request import (
     AddDynamicPartitionsRequest,
     DeleteDynamicPartitionsRequest,
+    ReplaceDynamicPartitionsRequest,
 )
 from dagster._core.definitions.run_request import DagsterRunReaction, InstigatorType, RunRequest
 from dagster._core.definitions.selector import JobSubsetSelector
@@ -914,7 +915,7 @@ def _evaluate_sensor(
 
 def _handle_dynamic_partitions_requests(
     dynamic_partitions_requests: Sequence[
-        Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]
+        Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]
     ],
     instance: DagsterInstance,
     context: SensorLaunchContext,
@@ -978,6 +979,36 @@ def _handle_dynamic_partitions_requests(
                     added_partitions=None,
                     deleted_partitions=existent_partitions,
                     skipped_partitions=nonexistent_partitions,
+                )
+            )
+        elif isinstance(request, ReplaceDynamicPartitionsRequest):
+            if existent_partitions:
+                for partition in existent_partitions:
+                    instance.delete_dynamic_partition(request.partitions_def_name, partition)
+
+                context.logger.info(
+                    "Deleted partition keys from dynamic partitions definition"
+                    f" '{request.partitions_def_name}': {existent_partitions}"
+                )
+
+            all_partitions = existent_partitions + nonexistent_partitions
+
+            if all_partitions:
+                instance.add_dynamic_partitions(
+                    request.partitions_def_name,
+                    all_partitions,
+                )
+                context.logger.info(
+                    "Added partition keys to dynamic partitions definition"
+                    f" '{request.partitions_def_name}': {all_partitions}"
+                )
+
+            context.add_dynamic_partitions_request_result(
+                DynamicPartitionsRequestResult(
+                    request.partitions_def_name,
+                    added_partitions=None,
+                    deleted_partitions=None,
+                    replaced_partitions=all_partitions,
                 )
             )
         else:

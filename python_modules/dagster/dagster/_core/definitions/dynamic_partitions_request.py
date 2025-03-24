@@ -51,3 +51,27 @@ class DeleteDynamicPartitionsRequest(
             partitions_def_name=check.str_param(partitions_def_name, "partitions_def_name"),
             partition_keys=check.list_param(partition_keys, "partition_keys", of_type=str),
         )
+
+
+@whitelist_for_serdes
+class ReplaceDynamicPartitionsRequest(
+    NamedTuple(
+        "_AddDynamicPartitionsRequest",
+        [
+            ("partitions_def_name", str),
+            ("partition_keys", Sequence[str]),
+        ],
+    )
+):
+    """A request to replace partitions to a dynamic partitions definition, to be evaluated by a sensor or schedule."""
+
+    def __new__(
+        cls,
+        partitions_def_name: str,
+        partition_keys: Sequence[str],
+    ):
+        return super().__new__(
+            cls,
+            partitions_def_name=check.str_param(partitions_def_name, "partitions_def_name"),
+            partition_keys=check.list_param(partition_keys, "partition_keys", of_type=str),
+        )

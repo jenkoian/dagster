@@ -5,6 +5,7 @@ import pytest
 from dagster import (
     AddDynamicPartitionsRequest,
     DeleteDynamicPartitionsRequest,
+    ReplaceDynamicPartitionsRequest,
     DynamicPartitionsDefinition,
     RunRequest,
     job,
@@ -22,12 +23,14 @@ from dagster._core.test_utils import instance_for_test
         ([], [AddDynamicPartitionsRequest("something_else", ["a"])], False),
         (["a"], [DeleteDynamicPartitionsRequest("something", ["a"])], False),
         (["a"], [DeleteDynamicPartitionsRequest("something_else", ["a"])], True),
+        (["a"], [ReplaceDynamicPartitionsRequest("something", ["a"])], True),
+        (["a"], [ReplaceDynamicPartitionsRequest("something_else", ["a"])], True),
     ],
 )
 def test_validate_dynamic_partitions(
     prior_partitions: Sequence[str],
     dynamic_partitions_requests: Sequence[
-        Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]
+        Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]
     ],
     expect_success: bool,
 ):

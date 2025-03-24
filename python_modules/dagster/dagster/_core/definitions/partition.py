@@ -25,6 +25,7 @@ from dagster._core.definitions.config import ConfigMapping
 from dagster._core.definitions.dynamic_partitions_request import (
     AddDynamicPartitionsRequest,
     DeleteDynamicPartitionsRequest,
+    ReplaceDynamicPartitionsRequest,
 )
 from dagster._core.definitions.partition_key_range import PartitionKeyRange
 from dagster._core.definitions.run_config import RunConfig, convert_config_input
@@ -580,6 +581,11 @@ class DynamicPartitionsDefinition(
         check.sequence_param(partition_keys, "partition_keys", of_type=str)
         validated_name = self._validated_name()
         return DeleteDynamicPartitionsRequest(validated_name, partition_keys)
+
+    def build_replace_request(self, partition_keys: Sequence[str]) -> ReplaceDynamicPartitionsRequest:
+        check.sequence_param(partition_keys, "partition_keys", of_type=str)
+        validated_name = self._validated_name()
+        return ReplaceDynamicPartitionsRequest(validated_name, partition_keys)
 
 
 @deprecated_param(

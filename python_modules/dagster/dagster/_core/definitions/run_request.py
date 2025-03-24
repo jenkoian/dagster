@@ -16,6 +16,7 @@ from dagster._core.definitions.declarative_automation.serialized_objects import 
 from dagster._core.definitions.dynamic_partitions_request import (
     AddDynamicPartitionsRequest,
     DeleteDynamicPartitionsRequest,
+    ReplaceDynamicPartitionsRequest,
 )
 from dagster._core.definitions.events import AssetKey, AssetMaterialization, AssetObservation
 from dagster._core.definitions.partition_key_range import PartitionKeyRange
@@ -176,7 +177,7 @@ class RunRequest(IHaveNew, LegacyNamedTupleMixin):
         self,
         target_definition: "JobDefinition",
         dynamic_partitions_requests: Sequence[
-            Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]
+            Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]
         ],
         current_time: Optional[datetime] = None,
         dynamic_partitions_store: Optional[DynamicPartitionsStore] = None,
@@ -253,16 +254,18 @@ class DynamicPartitionsStoreAfterRequests(DynamicPartitionsStore):
     wrapped_dynamic_partitions_store: DynamicPartitionsStore
     added_partition_keys_by_partitions_def_name: Mapping[str, AbstractSet[str]]
     deleted_partition_keys_by_partitions_def_name: Mapping[str, AbstractSet[str]]
+    replaced_partition_keys_by_partitions_def_name: Mapping[str, AbstractSet[str]]
 
     @staticmethod
     def from_requests(
         wrapped_dynamic_partitions_store: DynamicPartitionsStore,
         dynamic_partitions_requests: Sequence[
-            Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]
+            Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]
         ],
     ) -> "DynamicPartitionsStoreAfterRequests":
         added_partition_keys_by_partitions_def_name: dict[str, set[str]] = defaultdict(set)
         deleted_partition_keys_by_partitions_def_name: dict[str, set[str]] = defaultdict(set)
+        replaced_partition_keys_by_partitions_def_name: dict[str, set[str]] = defaultdict(set)
 
         for req in dynamic_partitions_requests:
             name = req.partitions_def_name
@@ -270,6 +273,8 @@ class DynamicPartitionsStoreAfterRequests(DynamicPartitionsStore):
                 added_partition_keys_by_partitions_def_name[name].update(set(req.partition_keys))
             elif isinstance(req, DeleteDynamicPartitionsRequest):
                 deleted_partition_keys_by_partitions_def_name[name].update(set(req.partition_keys))
+            elif isinstance(req, ReplaceDynamicPartitionsRequest):
+                replaced_partition_keys_by_partitions_def_name[name].update(set(req.partition_keys))
             else:
                 check.failed(f"Unexpected request type: {req}")
 
@@ -277,6 +282,7 @@ class DynamicPartitionsStoreAfterRequests(DynamicPartitionsStore):
             wrapped_dynamic_partitions_store=wrapped_dynamic_partitions_store,
             added_partition_keys_by_partitions_def_name=added_partition_keys_by_partitions_def_name,
             deleted_partition_keys_by_partitions_def_name=deleted_partition_keys_by_partitions_def_name,
+            replaced_partition_keys_by_partitions_def_name=replaced_partition_keys_by_partitions_def_name,
         )
 
     @cached_method
@@ -288,6 +294,9 @@ class DynamicPartitionsStoreAfterRequests(DynamicPartitionsStore):
             partitions_def_name, set()
         )
         deleted_partition_keys = self.deleted_partition_keys_by_partitions_def_name.get(
+            partitions_def_name, set()
+        )
+        replaced_partition_keys = self.replaced_partition_keys_by_partitions_def_name.get(
             partitions_def_name, set()
         )
         return list((partition_keys | added_partition_keys) - deleted_partition_keys)
@@ -353,7 +362,7 @@ class SensorResult(
             (
                 "dynamic_partitions_requests",
                 Optional[
-                    Sequence[Union[DeleteDynamicPartitionsRequest, AddDynamicPartitionsRequest]]
+                    Sequence[Union[DeleteDynamicPartitionsRequest, AddDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]]
                 ],
             ),
             (
@@ -375,7 +384,7 @@ class SensorResult(
             evaluation was skipped.
         cursor (Optional[str]): The cursor value for this sensor, which will be provided on the
             context for the next sensor evaluation.
-        dynamic_partitions_requests (Optional[Sequence[Union[DeleteDynamicPartitionsRequest, AddDynamicPartitionsRequest]]]): A list of dynamic partition requests to request dynamic
+        dynamic_partitions_requests (Optional[Sequence[Union[DeleteDynamicPartitionsRequest, AddDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]]]): A list of dynamic partition requests to request dynamic
             partition addition and deletion. Run requests will be evaluated using the state of the
             partitions with these changes applied. We recommend limiting partition additions
             and deletions to a maximum of 25K partitions per sensor evaluation, as this is the maximum
@@ -394,7 +403,7 @@ class SensorResult(
         skip_reason: Optional[Union[str, SkipReason]] = None,
         cursor: Optional[str] = None,
         dynamic_partitions_requests: Optional[
-            Sequence[Union[DeleteDynamicPartitionsRequest, AddDynamicPartitionsRequest]]
+            Sequence[Union[DeleteDynamicPartitionsRequest, AddDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]]
         ] = None,
         asset_events: Optional[
             Sequence[Union[AssetObservation, AssetMaterialization, AssetCheckEvaluation]]
@@ -419,7 +428,7 @@ class SensorResult(
             dynamic_partitions_requests=check.opt_sequence_param(
                 dynamic_partitions_requests,
                 "dynamic_partitions_requests",
-                (AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest),
+                (AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest),
             ),
             asset_events=list(
                 check.opt_sequence_param(

@@ -25,6 +25,7 @@ from dagster._core.definitions.declarative_automation.serialized_objects import 
 from dagster._core.definitions.dynamic_partitions_request import (
     AddDynamicPartitionsRequest,
     DeleteDynamicPartitionsRequest,
+    ReplaceDynamicPartitionsRequest,
 )
 from dagster._core.definitions.events import AssetMaterialization, AssetObservation
 from dagster._core.definitions.instigation_logger import InstigationLogger
@@ -488,11 +489,12 @@ def validate_and_get_resource_dict(
 
 def _check_dynamic_partitions_requests(
     dynamic_partitions_requests: Sequence[
-        Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]
+        Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]
     ],
 ) -> None:
     req_keys_to_add_by_partitions_def_name = defaultdict(set)
     req_keys_to_delete_by_partitions_def_name = defaultdict(set)
+    req_keys_to_replace_by_partitions_def_name = defaultdict(set)
 
     for req in dynamic_partitions_requests:
         duplicate_req_keys_to_delete = req_keys_to_delete_by_partitions_def_name.get(
@@ -501,12 +503,21 @@ def _check_dynamic_partitions_requests(
         duplicate_req_keys_to_add = req_keys_to_add_by_partitions_def_name.get(
             req.partitions_def_name, set()
         ).intersection(req.partition_keys)
+        duplicate_req_keys_to_replace = req_keys_to_replace_by_partitions_def_name.get(
+            req.partitions_def_name, set()
+        ).intersection(req.partition_keys)
         if isinstance(req, AddDynamicPartitionsRequest):
             if duplicate_req_keys_to_delete:
                 raise DagsterInvariantViolationError(
                     "Dynamic partition requests cannot contain both add and delete requests for"
                     " the same partition keys.Invalid request: partitions_def_name"
                     f" '{req.partitions_def_name}', partition_keys: {duplicate_req_keys_to_delete}"
+                )
+            elif duplicate_req_keys_to_replace:
+                raise DagsterInvariantViolationError(
+                    "Dynamic partition requests cannot contain both add and replace requests for"
+                    " the same partition keys.Invalid request: partitions_def_name"
+                    f" '{req.partitions_def_name}', partition_keys: {duplicate_req_keys_to_replace}"
                 )
             elif duplicate_req_keys_to_add:
                 raise DagsterInvariantViolationError(
@@ -529,7 +540,35 @@ def _check_dynamic_partitions_requests(
                     " the same partition keys.Invalid request: partitions_def_name"
                     f" '{req.partitions_def_name}', partition_keys: {duplicate_req_keys_to_add}"
                 )
+            elif duplicate_req_keys_to_replace:
+                raise DagsterInvariantViolationError(
+                    "Dynamic partition requests cannot contain both replace and delete requests for"
+                    " the same partition keys.Invalid request: partitions_def_name"
+                    f" '{req.partitions_def_name}', partition_keys: {duplicate_req_keys_to_replace}"
+                )
             req_keys_to_delete_by_partitions_def_name[req.partitions_def_name].update(
+                req.partition_keys
+            )
+        elif isinstance(req, ReplaceDynamicPartitionsRequest):
+            if duplicate_req_keys_to_replace:
+                raise DagsterInvariantViolationError(
+                    "Cannot request to add duplicate dynamic partition keys: \npartitions_def_name"
+                    f" '{req.partitions_def_name}', partition_keys:"
+                    f" {req_keys_to_replace_by_partitions_def_name}"
+                )
+            elif duplicate_req_keys_to_add:
+                raise DagsterInvariantViolationError(
+                    "Dynamic partition requests cannot contain both add and replace requests for"
+                    " the same partition keys.Invalid request: partitions_def_name"
+                    f" '{req.partitions_def_name}', partition_keys: {duplicate_req_keys_to_add}"
+                )
+            elif duplicate_req_keys_to_delete:
+                raise DagsterInvariantViolationError(
+                    "Dynamic partition requests cannot contain both delete and replace requests for"
+                    " the same partition keys.Invalid request: partitions_def_name"
+                    f" '{req.partitions_def_name}', partition_keys: {duplicate_req_keys_to_delete}"
+                )
+            req_keys_to_replace_by_partitions_def_name[req.partitions_def_name].update(
                 req.partition_keys
             )
         else:
@@ -878,7 +917,7 @@ class SensorDefinition(IHasInternalInit):
         run_requests: list[RunRequest] = []
         dagster_run_reactions: list[DagsterRunReaction] = []
         dynamic_partitions_requests: Optional[
-            Sequence[Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]]
+            Sequence[Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]]
         ] = []
         updated_cursor = context.cursor
         asset_events = []
@@ -990,7 +1029,7 @@ class SensorDefinition(IHasInternalInit):
         context: SensorEvaluationContext,
         asset_selection: Optional[AssetSelection],
         dynamic_partitions_requests: Sequence[
-            Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]
+            Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]
         ],
     ) -> Sequence[RunRequest]:
         def _get_repo_job_by_name(context: SensorEvaluationContext, job_name: str) -> JobDefinition:
@@ -1144,7 +1183,7 @@ class SensorExecutionData(
             (
                 "dynamic_partitions_requests",
                 Optional[
-                    Sequence[Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]]
+                    Sequence[Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]]
                 ],
             ),
             (
@@ -1165,7 +1204,7 @@ class SensorExecutionData(
         dagster_run_reactions: Optional[Sequence[DagsterRunReaction]] = None,
         log_key: Optional[Sequence[str]] = None,
         dynamic_partitions_requests: Optional[
-            Sequence[Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest]]
+            Sequence[Union[AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest]]
         ] = None,
         asset_events: Optional[
             Sequence[Union[AssetMaterialization, AssetObservation, AssetCheckEvaluation]]
@@ -1180,7 +1219,7 @@ class SensorExecutionData(
         check.opt_sequence_param(
             dynamic_partitions_requests,
             "dynamic_partitions_requests",
-            (AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest),
+            (AddDynamicPartitionsRequest, DeleteDynamicPartitionsRequest, ReplaceDynamicPartitionsRequest),
         )
         asset_events = check.opt_sequence_param(
             asset_events,

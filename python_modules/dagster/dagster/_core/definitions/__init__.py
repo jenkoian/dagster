@@ -17,6 +17,7 @@ from dagster._core.definitions.dependency import (
 from dagster._core.definitions.dynamic_partitions_request import (
     AddDynamicPartitionsRequest as AddDynamicPartitionsRequest,
     DeleteDynamicPartitionsRequest as DeleteDynamicPartitionsRequest,
+    ReplaceDynamicPartitionsRequest as ReplaceDynamicPartitionsRequest,
 )
 from dagster._core.definitions.events import (
     AssetKey as AssetKey,
